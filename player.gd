@@ -80,6 +80,7 @@ var dive_requested: bool = false            # 左クリックされたフレー�
 
 # ── 帽子「チェイス」──
 var hat_instance: Node = null               # 今飛んでいる帽子（同時に1つだけ）
+var throw_requested: bool = false           # E が押されたフレームに立てる
 
 
 func _ready() -> void:
@@ -104,6 +105,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		elif Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			dive_requested = true
+	# 帽子「チェイス」投げは E キーを直接拾う（インプットマップ登録は不要）
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_E:
+		throw_requested = true
 
 
 func _physics_process(delta: float) -> void:
@@ -147,7 +151,8 @@ func _physics_process(delta: float) -> void:
 				print("▼ヒップドロップ終わり（動けます）")
 
 	# ── 帽子「チェイス」を投げる（E）──
-	if Input.is_action_just_pressed("throw_hat"):
+	if throw_requested:
+		throw_requested = false
 		_throw_hat()
 
 	# 1) 重力（ヒップドロップ中は velocity.y を自前で制御するので切る）
