@@ -1,0 +1,58 @@
+[gd_scene load_steps=8 format=3 uid="uid://c0ta0dyssey0main"]
+
+[ext_resource type="Script" path="res://player.gd" id="1"]
+
+[sub_resource type="CapsuleShape3D" id="cap_shape"]
+radius = 0.5
+height = 2.0
+
+[sub_resource type="CapsuleMesh" id="cap_mesh"]
+radius = 0.5
+height = 2.0
+
+[sub_resource type="StandardMaterial3D" id="mat_blue"]
+albedo_color = Color(0.1, 0.35, 0.9, 1)
+
+[sub_resource type="BoxShape3D" id="box_shape"]
+size = Vector3(40, 1, 40)
+
+[sub_resource type="BoxMesh" id="box_mesh"]
+size = Vector3(40, 1, 40)
+
+[sub_resource type="StandardMaterial3D" id="mat_floor"]
+albedo_color = Color(0.42, 0.5, 0.42, 1)
+
+[node name="Main" type="Node3D"]
+
+[node name="Player" type="CharacterBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 0)
+script = ExtResource("1")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player"]
+shape = SubResource("cap_shape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Player"]
+mesh = SubResource("cap_mesh")
+material_override = SubResource("mat_blue")
+
+[node name="CameraPivot" type="Node3D" parent="Player"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+
+[node name="SpringArm3D" type="SpringArm3D" parent="Player/CameraPivot"]
+spring_length = 4.0
+
+[node name="Camera3D" type="Camera3D" parent="Player/CameraPivot/SpringArm3D"]
+
+[node name="Floor" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("box_mesh")
+material_override = SubResource("mat_floor")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("box_shape")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.6, 0.8, 0, -0.8, 0.6, 0, 8, 0)
+shadow_enabled = true

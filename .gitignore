@@ -1,0 +1,16 @@
+# Godot 4 .gitignore
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+*.translation
+
+# Exported builds
+build/
+*.exe
+*.pck
+*.zip
+
+# OS / editor
+.DS_Store
+Thumbs.db
