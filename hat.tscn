@@ -1,0 +1,34 @@
+[gd_scene load_steps=6 format=3 uid="uid://c0ta0dyssey0hat0"]
+
+[ext_resource type="Script" path="res://hat.gd" id="1"]
+
+[sub_resource type="CylinderMesh" id="brim"]
+top_radius = 0.5
+bottom_radius = 0.5
+height = 0.06
+
+[sub_resource type="CylinderMesh" id="crown"]
+top_radius = 0.28
+bottom_radius = 0.32
+height = 0.3
+
+[sub_resource type="StandardMaterial3D" id="mat_blue"]
+albedo_color = Color(0.1, 0.35, 0.9, 1)
+
+[sub_resource type="SphereShape3D" id="hat_col"]
+radius = 0.45
+
+[node name="Hat" type="Area3D"]
+script = ExtResource("1")
+
+[node name="Brim" type="MeshInstance3D" parent="."]
+mesh = SubResource("brim")
+material_override = SubResource("mat_blue")
+
+[node name="Crown" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.18, 0)
+mesh = SubResource("crown")
+material_override = SubResource("mat_blue")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("hat_col")

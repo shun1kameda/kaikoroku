@@ -49,6 +49,9 @@ extends CharacterBody3D
 # ── デバッグ ──
 @export var debug_jump: bool = true        # 実機でログを見たいとき true
 
+# ── 帽子「チェイス」投げ（E）──
+@export var hat_scene: PackedScene          # 未設定なら _ready で res://hat.tscn を読む
+
 # ── カメラ ──
 @export var mouse_sensitivity: float = 0.003
 
@@ -75,9 +78,14 @@ var dive_state: int = DiveState.NONE
 var dive_timer: float = 0.0
 var dive_requested: bool = false            # 左クリックされたフレームに立てる
 
+# ── 帽子「チェイス」──
+var hat_instance: Node = null               # 今飛んでいる帽子（同時に1つだけ）
+
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if hat_scene == null:
+		hat_scene = load("res://hat.tscn")
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -137,6 +145,10 @@ func _physics_process(delta: float) -> void:
 			hip_state = HipState.NONE
 			if debug_jump:
 				print("▼ヒップドロップ終わり（動けます）")
+
+	# ── 帽子「チェイス」を投げる（E）──
+	if Input.is_action_just_pressed("throw_hat"):
+		_throw_hat()
 
 	# 1) 重力（ヒップドロップ中は velocity.y を自前で制御するので切る）
 	if not is_on_floor() and not hip_active:
@@ -276,3 +288,19 @@ func _physics_process(delta: float) -> void:
 			mesh.rotation.x = deg_to_rad(-dive_pitch)   # 滑っている間は前傾のまま
 			if debug_jump:
 				print("→着地して滑る…（", dive_getup_time, " 秒で起き上がる）")
+
+
+# 帽子「チェイス」を前方へ投げる。飛んでいる帽子は同時に1つだけ。
+func _throw_hat() -> void:
+	if hat_scene == null:
+		return
+	if is_instance_valid(hat_instance):
+		return   # まだ前の帽子が飛んでいる間は投げ直さない
+	var hat: Node = hat_scene.instantiate()
+	get_parent().add_child(hat)                 # ステージ（Main）の子として出す
+	var forward: Vector3 = Vector3(-sin(mesh.rotation.y), 0.0, -cos(mesh.rotation.y))
+	var start: Vector3 = global_position + Vector3(0.0, 1.0, 0.0) + forward * 0.6
+	hat.throw(start, forward, self)
+	hat_instance = hat
+	if debug_jump:
+		print("→チェイスを投げた！")
