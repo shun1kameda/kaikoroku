@@ -34,6 +34,11 @@ extends CharacterBody3D
 @export var coyote_time: float = 0.1
 @export var jump_buffer_time: float = 0.15
 
+# ── ヒップドロップ（Ctrl）──
+@export var hip_freeze_time: float = 0.12   # 発動後、空中でピタッと止まる時間（秒）
+@export var hip_drop_speed: float = 30.0    # 真下への落下速度（大きいほど速い）
+@export var hip_land_time: float = 0.25     # 着地でドンと止まる硬直の時間（秒）
+
 # ── デバッグ ──
 @export var debug_jump: bool = true        # 実機でログを見たいとき true
 
@@ -49,6 +54,12 @@ var jump_buffer_timer: float = 0.0
 var jump_phase: int = 0
 var combo_timer: float = 0.0
 var flip_timer: float = 0.0
+
+# ── ヒップドロップの状態 ──
+# NONE=通常 / FREEZE=空中で静止中 / FALL=高速落下中 / LAND=着地硬直中
+enum HipState { NONE, FREEZE, FALL, LAND }
+var hip_state: int = HipState.NONE
+var hip_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -72,8 +83,41 @@ func _physics_process(delta: float) -> void:
 	#    ここでは「1フレーム前の着地状態」が入る。）
 	var was_on_floor: bool = is_on_floor()
 
-	# 1) 重力
-	if not is_on_floor():
+	# ── ヒップドロップ：発動（空中で Ctrl を押したときだけ。地上では出ない）──
+	if Input.is_action_just_pressed("hip_drop") and hip_state == HipState.NONE and not is_on_floor():
+		hip_state = HipState.FREEZE
+		hip_timer = hip_freeze_time
+		velocity = Vector3.ZERO         # いったん空中でピタッと止める
+		jump_phase = 0                  # ジャンプの段はリセット
+		flip_timer = 0.0
+		mesh.rotation.x = 0.0
+		if debug_jump:
+			print("▼ヒップドロップ：空中で静止…")
+
+	# ── ヒップドロップ：状態を進める ──
+	var hip_active: bool = hip_state != HipState.NONE
+	if hip_state == HipState.FREEZE:
+		velocity = Vector3.ZERO         # 止まっている間は完全静止（横も縦も）
+		hip_timer -= delta
+		if hip_timer <= 0.0:
+			hip_state = HipState.FALL
+			if debug_jump:
+				print("▼高速落下！")
+	elif hip_state == HipState.FALL:
+		velocity.x = 0.0                # 落下中は横移動不可
+		velocity.z = 0.0
+		velocity.y = -hip_drop_speed    # 真下へ高速落下
+	elif hip_state == HipState.LAND:
+		velocity.x = 0.0                # 着地硬直中も横移動不可
+		velocity.z = 0.0
+		hip_timer -= delta
+		if hip_timer <= 0.0:
+			hip_state = HipState.NONE
+			if debug_jump:
+				print("▼ヒップドロップ終わり（動けます）")
+
+	# 1) 重力（ヒップドロップ中は velocity.y を自前で制御するので切る）
+	if not is_on_floor() and not hip_active:
 		velocity.y -= gravity * delta
 
 	# 2) コヨーテタイム
@@ -95,8 +139,8 @@ func _physics_process(delta: float) -> void:
 		if debug_jump:
 			print("××× 受付時間切れ：段が 0 に戻りました（次のジャンプは1段目）")
 
-	# 5) ジャンプ成立
-	if jump_buffer_timer > 0.0 and coyote_timer > 0.0:
+	# 5) ジャンプ成立（ヒップドロップ中は跳べない）
+	if not hip_active and jump_buffer_timer > 0.0 and coyote_timer > 0.0:
 		var combo_alive: float = combo_timer   # 判定に使った受付残り（ログ用）
 		# 段アップ条件：着地後の受付が生きていて、まだ3段目でない
 		if combo_timer > 0.0 and jump_phase >= 1 and jump_phase < 3:
@@ -130,13 +174,14 @@ func _physics_process(delta: float) -> void:
 	var speed: float = dash_speed if Input.is_action_pressed("dash") else walk_speed
 	var target: Vector3 = direction * speed
 
-	# 8) 加速（空中は air_control 分だけ効きを弱める）
-	var a: float = accel * (1.0 if is_on_floor() else air_control)
-	velocity.x = move_toward(velocity.x, target.x, a * delta)
-	velocity.z = move_toward(velocity.z, target.z, a * delta)
+	# 8) 加速（空中は air_control 分だけ効きを弱める。ヒップドロップ中は横移動しない）
+	if not hip_active:
+		var a: float = accel * (1.0 if is_on_floor() else air_control)
+		velocity.x = move_toward(velocity.x, target.x, a * delta)
+		velocity.z = move_toward(velocity.z, target.z, a * delta)
 
-	# 9) 見た目のカプセルを進行方向へ向ける
-	if direction != Vector3.ZERO:
+	# 9) 見た目のカプセルを進行方向へ向ける（ヒップドロップ中は向きを変えない）
+	if direction != Vector3.ZERO and not hip_active:
 		var target_angle: float = atan2(-direction.x, -direction.z)
 		mesh.rotation.y = lerp_angle(mesh.rotation.y, target_angle, turn_speed * delta)
 
@@ -160,3 +205,10 @@ func _physics_process(delta: float) -> void:
 		mesh.rotation.x = 0.0
 		if debug_jump:
 			print("--- 着地：ここから ", combo_time, " 秒以内に跳べば段アップ（今の段=", jump_phase, "）")
+		# ヒップドロップの落下から着地したら「ドン」と硬直に入る
+		if hip_state == HipState.FALL:
+			hip_state = HipState.LAND
+			hip_timer = hip_land_time
+			velocity = Vector3.ZERO
+			if debug_jump:
+				print("▼ドン！着地硬直 ", hip_land_time, " 秒（この間は横移動できない）")
