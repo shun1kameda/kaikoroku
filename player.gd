@@ -39,6 +39,13 @@ extends CharacterBody3D
 @export var hip_drop_speed: float = 30.0    # 真下への落下速度（大きいほど速い）
 @export var hip_land_time: float = 0.25     # 着地でドンと止まる硬直の時間（秒）
 
+# ── ダイブ（左クリック）──
+@export var dive_speed: float = 12.0        # 前方へ飛び込む速さ
+@export var dive_up: float = 4.0            # 飛び込むときに少し上へ跳ねる量
+@export var dive_slide_friction: float = 18.0  # 着地後、滑って止まる強さ（大きいほど早く止まる）
+@export var dive_getup_time: float = 0.45   # 着地→滑って起き上がるまでの時間（秒）
+@export var dive_pitch: float = 80.0        # 飛び込み姿勢の前傾（度）
+
 # ── デバッグ ──
 @export var debug_jump: bool = true        # 実機でログを見たいとき true
 
@@ -61,6 +68,13 @@ enum HipState { NONE, FREEZE, FALL, LAND }
 var hip_state: int = HipState.NONE
 var hip_timer: float = 0.0
 
+# ── ダイブの状態 ──
+# NONE=通常 / DIVE=飛び込み中（空中）/ SLIDE=着地して滑って起き上がり中
+enum DiveState { NONE, DIVE, SLIDE }
+var dive_state: int = DiveState.NONE
+var dive_timer: float = 0.0
+var dive_requested: bool = false            # 左クリックされたフレームに立てる
+
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -73,8 +87,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		camera_pivot.rotation.x = clamp(camera_pivot.rotation.x, deg_to_rad(-60), deg_to_rad(30))
 	if event.is_action_pressed("ui_cancel"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	if event is InputEventMouseButton and event.pressed:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		return
+	# 左クリックの役割を状況で分ける：
+	#   マウス解放中（メニュー等）→ 画面に復帰（キャプチャ）※このクリックはダイブしない
+	#   マウスキャプチャ中（プレイ中）→ ダイブ要求
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		elif Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			dive_requested = true
 
 
 func _physics_process(delta: float) -> void:
@@ -84,7 +105,8 @@ func _physics_process(delta: float) -> void:
 	var was_on_floor: bool = is_on_floor()
 
 	# ── ヒップドロップ：発動（空中で Ctrl を押したときだけ。地上では出ない）──
-	if Input.is_action_just_pressed("hip_drop") and hip_state == HipState.NONE and not is_on_floor():
+	if Input.is_action_just_pressed("hip_drop") and hip_state == HipState.NONE \
+			and dive_state == DiveState.NONE and not is_on_floor():
 		hip_state = HipState.FREEZE
 		hip_timer = hip_freeze_time
 		velocity = Vector3.ZERO         # いったん空中でピタッと止める
@@ -139,8 +161,8 @@ func _physics_process(delta: float) -> void:
 		if debug_jump:
 			print("××× 受付時間切れ：段が 0 に戻りました（次のジャンプは1段目）")
 
-	# 5) ジャンプ成立（ヒップドロップ中は跳べない）
-	if not hip_active and jump_buffer_timer > 0.0 and coyote_timer > 0.0:
+	# 5) ジャンプ成立（ヒップドロップ中・ダイブ中は跳べない）
+	if not hip_active and dive_state == DiveState.NONE and jump_buffer_timer > 0.0 and coyote_timer > 0.0:
 		var combo_alive: float = combo_timer   # 判定に使った受付残り（ログ用）
 		# 段アップ条件：着地後の受付が生きていて、まだ3段目でない
 		if combo_timer > 0.0 and jump_phase >= 1 and jump_phase < 3:
@@ -170,18 +192,53 @@ func _physics_process(delta: float) -> void:
 	else:
 		direction = Vector3.ZERO
 
+	# ── ダイブ：発動（左クリック。地上でも空中でもOK）──
+	if dive_requested:
+		dive_requested = false
+		if dive_state == DiveState.NONE and hip_state == HipState.NONE:
+			# 飛び込む向き：移動入力があればその方向、無ければ今カプセルが向いている方向
+			var dive_dir: Vector3 = direction
+			if dive_dir == Vector3.ZERO:
+				dive_dir = Vector3(-sin(mesh.rotation.y), 0.0, -cos(mesh.rotation.y))
+			dive_state = DiveState.DIVE
+			velocity.x = dive_dir.x * dive_speed
+			velocity.z = dive_dir.z * dive_speed
+			velocity.y = dive_up
+			mesh.rotation.y = atan2(-dive_dir.x, -dive_dir.z)
+			mesh.rotation.x = deg_to_rad(-dive_pitch)   # 前傾（飛び込み姿勢）
+			flip_timer = 0.0
+			jump_phase = 0
+			if debug_jump:
+				print("→ダイブ！ 前方へ飛び込み")
+
+	var dive_active: bool = dive_state != DiveState.NONE
+
 	# 7) 速度（Shiftでダッシュ）
 	var speed: float = dash_speed if Input.is_action_pressed("dash") else walk_speed
 	var target: Vector3 = direction * speed
 
-	# 8) 加速（空中は air_control 分だけ効きを弱める。ヒップドロップ中は横移動しない）
-	if not hip_active:
+	# 8) 加速（状況で横移動の扱いを分ける）
+	if hip_active:
+		pass                                  # ヒップドロップ中は横移動しない（別処理済み）
+	elif dive_state == DiveState.DIVE:
+		pass                                  # ダイブ中は勢いを保つ（入力で曲げない）
+	elif dive_state == DiveState.SLIDE:
+		# 着地後：摩擦で滑って止まり、時間で起き上がる
+		velocity.x = move_toward(velocity.x, 0.0, dive_slide_friction * delta)
+		velocity.z = move_toward(velocity.z, 0.0, dive_slide_friction * delta)
+		dive_timer -= delta
+		if dive_timer <= 0.0:
+			dive_state = DiveState.NONE
+			mesh.rotation.x = 0.0             # 起き上がる
+			if debug_jump:
+				print("→起き上がり（動けます）")
+	else:
 		var a: float = accel * (1.0 if is_on_floor() else air_control)
 		velocity.x = move_toward(velocity.x, target.x, a * delta)
 		velocity.z = move_toward(velocity.z, target.z, a * delta)
 
-	# 9) 見た目のカプセルを進行方向へ向ける（ヒップドロップ中は向きを変えない）
-	if direction != Vector3.ZERO and not hip_active:
+	# 9) 見た目のカプセルを進行方向へ向ける（ヒップドロップ中・ダイブ中は向きを変えない）
+	if direction != Vector3.ZERO and not hip_active and not dive_active:
 		var target_angle: float = atan2(-direction.x, -direction.z)
 		mesh.rotation.y = lerp_angle(mesh.rotation.y, target_angle, turn_speed * delta)
 
@@ -212,3 +269,10 @@ func _physics_process(delta: float) -> void:
 			velocity = Vector3.ZERO
 			if debug_jump:
 				print("▼ドン！着地硬直 ", hip_land_time, " 秒（この間は横移動できない）")
+		# ダイブの飛び込みから着地したら「滑って起き上がる」に入る
+		if dive_state == DiveState.DIVE:
+			dive_state = DiveState.SLIDE
+			dive_timer = dive_getup_time
+			mesh.rotation.x = deg_to_rad(-dive_pitch)   # 滑っている間は前傾のまま
+			if debug_jump:
+				print("→着地して滑る…（", dive_getup_time, " 秒で起き上がる）")
