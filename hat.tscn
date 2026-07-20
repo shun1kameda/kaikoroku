@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://c0ta0dyssey0hat0"]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://hat.gd" id="1"]
 

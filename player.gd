@@ -87,6 +87,9 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if hat_scene == null:
 		hat_scene = load("res://hat.tscn")
+	if debug_jump:
+		print("[チェイス診断] _ready: hat_scene = ", hat_scene,
+			"（null なら hat.tscn を読めていません）")
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -108,6 +111,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	# 帽子「チェイス」投げは E キーを直接拾う（インプットマップ登録は不要）
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_E:
 		throw_requested = true
+		if debug_jump:
+			print("[チェイス診断] E を検出しました")
 
 
 func _physics_process(delta: float) -> void:
@@ -298,8 +303,10 @@ func _physics_process(delta: float) -> void:
 # 帽子「チェイス」を前方へ投げる。飛んでいる帽子は同時に1つだけ。
 func _throw_hat() -> void:
 	if hat_scene == null:
+		print("[チェイス診断] 中止：hat_scene が null（hat.tscn を読めていない）")
 		return
 	if is_instance_valid(hat_instance):
+		print("[チェイス診断] 中止：まだ前の帽子が飛んでいます")
 		return   # まだ前の帽子が飛んでいる間は投げ直さない
 	var hat: Node = hat_scene.instantiate()
 	get_parent().add_child(hat)                 # ステージ（Main）の子として出す
@@ -307,5 +314,4 @@ func _throw_hat() -> void:
 	var start: Vector3 = global_position + Vector3(0.0, 1.0, 0.0) + forward * 0.6
 	hat.throw(start, forward, self)
 	hat_instance = hat
-	if debug_jump:
-		print("→チェイスを投げた！")
+	print("→チェイスを投げた！ 位置=", start)
